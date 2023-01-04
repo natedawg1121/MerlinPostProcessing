@@ -271,7 +271,7 @@ function onOpen() {
   }
 
   if (getProperty("powerChanging")) {
-    var aAxis = createAxis({coordinate:0, table:true, axis:[1, 0, 0], range:[0.0,0.0255], preference:0});
+    var aAxis = createAxis({coordinate:0, table:true, axis:[0, 0, 1], range:[0.0,0.0255], preference:0});
     machineConfiguration = new MachineConfiguration(aAxis);
 
     setMachineConfiguration(machineConfiguration);
