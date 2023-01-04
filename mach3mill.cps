@@ -1,23 +1,7 @@
-/**
-  Copyright (C) 2012-2022 by Autodesk, Inc.
-  All rights reserved.
+description = "Merlin Laser Post";
+vendor = "Merlin Aerospace";
 
-  Mach3Mill post processor configuration.
-
-  $Revision: 43875 ddbf802fc9321522cb4eee588c8f2ad4b237719e $
-  $Date: 2022-07-12 14:28:23 $
-
-  FORKID {12317DF3-FEC5-4509-B402-622F414C7B47}
-*/
-
-description = "Mach3Mill";
-vendor = "Artsoft";
-vendorUrl = "http://www.machsupport.com";
-legal = "Copyright (C) 2012-2022 by Autodesk, Inc.";
-certificationLevel = 2;
-minimumRevision = 45702;
-
-longDescription = "Generic milling post for Mach3.";
+longDescription = "Merlin CNC Laser Post Processor";
 
 extension = "gcode";
 setCodePage("ascii");
@@ -64,14 +48,6 @@ properties = {
     value: "G28",
     scope: "post"
   },
-  useM06: {
-    title      : "Use M6",
-    description: "Disable to avoid outputting M6. If disabled Preload is also disabled",
-    group      : "preferences",
-    type       : "boolean",
-    value      : true,
-    scope      : "post"
-  },
   useZAxis: {
     title      : "Use Z axis",
     description: "Specifies to enable the output for Z coordinates.",
@@ -88,14 +64,6 @@ properties = {
     value      : false,
     scope      : "post"
   },
-  preloadTool: {
-    title      : "Preload tool",
-    description: "Preloads the next tool at a tool change (if any).",
-    group      : "preferences",
-    type       : "boolean",
-    value      : false,
-    scope      : "post"
-  },
   showSequenceNumbers: {
     title      : "Use sequence numbers",
     description: "'Yes' outputs sequence numbers on each block, 'Only on tool change' outputs sequence numbers on tool change blocks only, and 'No' disables the output of sequence numbers.",
@@ -106,7 +74,7 @@ properties = {
       {title:"No", id:"false"},
       {title:"Only on tool change", id:"toolChange"}
     ],
-    value: "false",
+    value: "true",
     scope: "post"
   },
   sequenceNumberStart: {
@@ -141,19 +109,6 @@ properties = {
     value      : true,
     scope      : "post"
   },
-  fourthAxis: {
-    title      : "Fourth axis mounted along",
-    description: "Specifies which axis the fourth axis is mounted on.",
-    group      : "configuration",
-    type       : "enum",
-    values     : [
-      {id:"none", title:"None"},
-      {id:"x", title:"Along X"},
-      {id:"y", title:"Along Y"}
-    ],
-    value: "none",
-    scope: "post"
-  },
   useRadius: {
     title      : "Radius arcs",
     description: "If yes is selected, arcs are outputted using radius values rather than IJK.",
@@ -182,19 +137,6 @@ properties = {
       {title:"Patterns", id:"patterns"}
     ],
     value: "none",
-    scope: "post"
-  },
-  useRigidTapping: {
-    title      : "Use rigid tapping",
-    description: "Select 'Yes' to enable, 'No' to disable, or 'Without spindle direction' to enable rigid tapping without outputting the spindle direction block.",
-    group      : "preferences",
-    type       : "enum",
-    values     : [
-      {title:"Yes", id:"yes"},
-      {title:"No", id:"no"},
-      {title:"Without spindle direction", id:"without"}
-    ],
-    value: "yes",
     scope: "post"
   }
 };
@@ -317,16 +259,6 @@ function formatComment(text) {
 }
 
 /**
-  Writes the specified block - used for tool changes only.
-*/
-function writeToolBlock() {
-  var show = getProperty("showSequenceNumbers");
-  setProperty("showSequenceNumbers", (show == "true" || show == "toolChange") ? "true" : "false");
-  writeBlock(arguments);
-  setProperty("showSequenceNumbers", show);
-}
-
-/**
   Output a comment.
 */
 function writeComment(text) {
@@ -338,8 +270,8 @@ function onOpen() {
     maximumCircularSweep = toRad(90); // avoid potential center calculation errors for CNC
   }
 
-  if (getProperty("fourthAxis") != "none") {
-    var aAxis = createAxis({coordinate:0, table:true, axis:[(getProperty("fourthAxis") == "x") ? -1 : 0, (getProperty("fourthAxis") == "y") ? -1 : 0, 0], cyclic:true, preference:0});
+  if (getProperty("powerChanging")) {
+    var aAxis = createAxis({coordinate:0, table:true, axis:[1, 0, 0], range:[0.0,0.0255], preference:0});
     machineConfiguration = new MachineConfiguration(aAxis);
 
     setMachineConfiguration(machineConfiguration);
@@ -421,33 +353,6 @@ function onOpen() {
         }
         comment += " - " + getToolTypeName(tool.type);
         writeComment(comment);
-      }
-    }
-  }
-
-  if (false) {
-    // check for duplicate tool number
-    for (var i = 0; i < getNumberOfSections(); ++i) {
-      var sectioni = getSection(i);
-      var tooli = sectioni.getTool();
-      for (var j = i + 1; j < getNumberOfSections(); ++j) {
-        var sectionj = getSection(j);
-        var toolj = sectionj.getTool();
-        if (tooli.number == toolj.number) {
-          if (xyzFormat.areDifferent(tooli.diameter, toolj.diameter) ||
-              xyzFormat.areDifferent(tooli.cornerRadius, toolj.cornerRadius) ||
-              abcFormat.areDifferent(tooli.taperAngle, toolj.taperAngle) ||
-              (tooli.numberOfFlutes != toolj.numberOfFlutes)) {
-            error(
-              subst(
-                localize("Using the same tool number for different cutter geometry for operation '%1' and '%2'."),
-                sectioni.hasParameter("operation-comment") ? sectioni.getParameter("operation-comment") : ("#" + (i + 1)),
-                sectionj.hasParameter("operation-comment") ? sectionj.getParameter("operation-comment") : ("#" + (j + 1))
-              )
-            );
-            return;
-          }
-        }
       }
     }
   }
