@@ -35,19 +35,6 @@ properties = {
     value      : true,
     scope      : "post"
   },
-  safePositionMethod: {
-    title      : "Safe Retracts",
-    description: "Select your desired retract option. 'Clearance Height' retracts to the operation clearance height.",
-    group      : "homePositions",
-    type       : "enum",
-    values     : [
-      {title:"G28", id:"G28"},
-      {title:"G53", id:"G53"},
-      {title:"Clearance Height", id:"clearanceHeight"}
-    ],
-    value: "G28",
-    scope: "post"
-  },
   useZAxis: {
     title      : "Use Z axis",
     description: "Specifies to enable the output for Z coordinates.",
@@ -57,8 +44,8 @@ properties = {
     scope      : "post"
   },
   powerChanging: {
-    title      : "Dynamic Power Changes",
-    description: "Dynamically changes power output to altar cutting depth. This is useful for making pictures.",
+    title      : "Power Changes",
+    description: "Uses spindle speed to altar laser power.",
     group      : "configuration",
     type       : "boolean",
     value      : false,
@@ -193,7 +180,7 @@ var aOutput = createVariable({prefix:"A"}, abcFormat);
 var bOutput = createVariable({prefix:"B"}, abcFormat);
 var cOutput = createVariable({prefix:"C"}, abcFormat);
 var feedOutput = createVariable({prefix:"F"}, feedFormat);
-var sOutput = createVariable({prefix:"S", force:true}, rpmFormat);
+var sOutput = createVariable({prefix:"G1 A0.0", force:true}, "/n" + rpmFormat);
 var dOutput = createVariable({force:true}, dFormat);
 var pOutput = createVariable({}, pFormat);
 
@@ -258,6 +245,10 @@ function formatComment(text) {
   return "(" + filterText(String(text).toUpperCase(), permittedCommentChars) + ")";
 }
 
+function writePowerChange() {
+  
+}
+
 /**
   Output a comment.
 */
@@ -268,14 +259,6 @@ function writeComment(text) {
 function onOpen() {
   if (getProperty("useRadius")) {
     maximumCircularSweep = toRad(90); // avoid potential center calculation errors for CNC
-  }
-
-  if (getProperty("powerChanging")) {
-    var aAxis = createAxis({coordinate:0, table:true, axis:[0, 0, 1], range:[0.0,0.0255], preference:0});
-    machineConfiguration = new MachineConfiguration(aAxis);
-
-    setMachineConfiguration(machineConfiguration);
-    optimizeMachineAngles2(1); // map tip mode
   }
 
   if (!machineConfiguration.isMachineCoordinate(0)) {
@@ -837,12 +820,6 @@ function onSection() {
       warning(localize("Tool number exceeds maximum value."));
     }
 
-    if (getProperty("useM06")) {
-      writeToolBlock("T" + toolFormat.format(tool.number), mFormat.format(6));
-    } else {
-      writeBlock(mFormat.format(0), formatComment(localize("CHANGE TOOL")));
-      writeToolBlock("T" + toolFormat.format(tool.number));
-    }
     if (tool.comment) {
       writeComment(tool.comment);
     }
@@ -884,13 +861,11 @@ function onSection() {
     (tool.clockwise != getPreviousSection().getTool().clockwise));
   if (spindleChanged) {
     forceSpindleSpeed = false;
-    if (spindleSpeed < 1) {
-      error(localize("Spindle speed out of range."));
+    if (spindleSpeed < 0 || spindleSpeed > 255) {
+      error(localize("Laser power out of range."));
       return;
     }
-    if (spindleSpeed > 99999) {
-      warning(localize("Spindle speed exceeds maximum value."));
-    }
+
     var tapping = hasParameter("operation:cycleType") &&
       ((getParameter("operation:cycleType") == "tapping") ||
       (getParameter("operation:cycleType") == "right-tapping") ||
