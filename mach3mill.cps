@@ -3,7 +3,7 @@ vendor = "Merlin Aerospace";
 
 longDescription = "Merlin CNC Laser Post Processor";
 
-extension = "gcode";
+extension = "nc";
 setCodePage("ascii");
 
 capabilities = CAPABILITY_MILLING;
@@ -1743,7 +1743,7 @@ function getCoolantCodes(coolant) {
     return multipleCoolantBlocks; // return the single formatted coolant value
   }
   return undefined;
-}
+} 
 
 var mapCommand = {
   COMMAND_END                     : 2,
@@ -1880,23 +1880,6 @@ function writeRetract() {
       break;
     default:
       error(localize("Unsupported axis specified for writeRetract()."));
-      return;
-    }
-  }
-  if (words.length > 0) {
-    switch (method) {
-    case "G28":
-      gMotionModal.reset();
-      gAbsIncModal.reset();
-      writeBlock(gFormat.format(28), gAbsIncModal.format(91), words);
-      writeBlock(gAbsIncModal.format(90));
-      break;
-    case "G53":
-      gMotionModal.reset();
-      writeBlock(gAbsIncModal.format(90), gFormat.format(53), gMotionModal.format(0), words);
-      break;
-    default:
-      error(localize("Unsupported safe position method."));
       return;
     }
   }
