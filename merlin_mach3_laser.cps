@@ -215,7 +215,7 @@ var rFormat = xyzFormat; // radius
 var abcFormat = createFormat({decimals:3, forceDecimal:true, scale:DEG});
 var feedFormat = createFormat({decimals:(unit == MM ? 0 : 1), forceDecimal:true});
 var toolFormat = createFormat({decimals:0});
-var rpmFormat = createFormat({decimals:0});
+var rpmFormat = createFormat({decimals:0, suffix:" F20", minDigitsLeft:3});
 var secFormat = createFormat({decimals:3, forceDecimal:true}); // seconds - range 0.001-99999.999
 var milliFormat = createFormat({decimals:0}); // milliseconds // range 1-9999
 var taperFormat = createFormat({decimals:1, scale:DEG});
@@ -272,6 +272,7 @@ var patternIsActive = false;
 var lastOperationComment = "";
 var incrementalSubprogram;
 var retracted = false; // specifies that the tool has been retracted to the safe plane
+var spindleOn = false;
 
 /**
   Writes the specified block.
@@ -338,25 +339,33 @@ function onOpen() {
     writeComment(programComment);
   }
 
+  //Pic Convert heaader
+  writeComment("PicConvert Zero");
+  writeBlock(gFormat.format(64));
+  writeBlock(gFormat.format(90));
+  writeBlock(gFormat.format(20));
+  writeBlock(sOutput.format(255));
+  writeBlock(sOutput.format(000) + "\n");
+
   lastSubprogram = 0;
 
   // dump machine configuration
-  var vendor = machineConfiguration.getVendor();
-  var model = machineConfiguration.getModel();
-  var description = machineConfiguration.getDescription();
+  // var vendor = machineConfiguration.getVendor();
+  // var model = machineConfiguration.getModel();
+  // var description = machineConfiguration.getDescription();
 
-  if (getProperty("writeMachine") && (vendor || model || description)) {
-    writeComment(localize("Machine"));
-    if (vendor) {
-      writeComment("  " + localize("vendor") + ": " + vendor);
-    }
-    if (model) {
-      writeComment("  " + localize("model") + ": " + model);
-    }
-    if (description) {
-      writeComment("  " + localize("description") + ": "  + description);
-    }
-  }
+  // if (getProperty("writeMachine") && (vendor || model || description)) {
+  //   writeComment(localize("Machine"));
+  //   if (vendor) {
+  //     writeComment("  " + localize("vendor") + ": " + vendor);
+  //   }
+  //   if (model) {
+  //     writeComment("  " + localize("model") + ": " + model);
+  //   }
+  //   if (description) {
+  //     writeComment("  " + localize("description") + ": "  + description);
+  //   }
+  // }
 
   if ((getNumberOfSections() > 0) && (getSection(0).workOffset == 0)) {
     for (var i = 0; i < getNumberOfSections(); ++i) {
@@ -367,17 +376,16 @@ function onOpen() {
     }
   }
 
-  // absolute coordinates and feed per min
-  writeBlock(gAbsIncModal.format(90), gFeedModeModal.format(94), gFormat.format(91.1), gFormat.format(40), gFormat.format(49), gPlaneModal.format(17));
+  writeBlock(gFeedModeModal.format(00), gFormat.format(17), gFormat.format(40), gFormat.format(49), gPlaneModal.format(80));
 
-  switch (unit) {
-  case IN:
-    writeBlock(gUnitModal.format(20));
-    break;
-  case MM:
-    writeBlock(gUnitModal.format(21));
-    break;
-  }
+  // switch (unit) {
+  // case IN:
+  //   writeBlock(gUnitModal.format(20));
+  //   break;
+  // case MM:
+  //   writeBlock(gUnitModal.format(21));
+  //   break;
+  // }
 }
 
 function onComment(message) {
@@ -906,14 +914,18 @@ function onSection() {
     (tool.clockwise != getPreviousSection().getTool().clockwise));
   if (spindleChanged) {
     forceSpindleSpeed = false;
-    if (spindleSpeed < 1) {
+    if (spindleSpeed < 0) {
       error(localize("Laser power is under minimum value."));
       return;
     }
     if (spindleSpeed > 255) {
       error(localize("Laser power exceeds maximum value."));
     }
-    writeBlock(sOutput.format(spindleSpeed), mFormat.format(tool.clockwise ? 3 : 4));
+    if(!spindleOn) {
+      writeBlock(mFormat.format(3));
+      spindleOn = true;
+    }
+    writeBlock(sOutput.format(spindleSpeed));
 
     // wcs
     if (insertToolCall) { // force work offset when changing tool
@@ -1795,7 +1807,7 @@ function getCoolantCodes(coolant) {
 var mapCommand = {
   COMMAND_END                     : 2,
   COMMAND_SPINDLE_CLOCKWISE       : 3,
-  COMMAND_SPINDLE_COUNTERCLOCKWISE: 4,
+  COMMAND_SPINDLE_COUNTERCLOCKWISE: 3,
   COMMAND_STOP_SPINDLE            : 5,
   COMMAND_ORIENTATE_SPINDLE       : 19,
   COMMAND_LOAD_TOOL               : 6
@@ -1867,6 +1879,7 @@ function onSectionEnd() {
       }
     }
   }
+  writeBlock(sOutput.format(000));
   forceAny();
 }
 
@@ -1966,6 +1979,9 @@ function onClose() {
 
   onImpliedCommand(COMMAND_END);
   onImpliedCommand(COMMAND_STOP_SPINDLE);
+  writeBlock(mFormat.format(05));
+  spindleOn = false;
+  writeBlock(gFormat.format(90));
   writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
   if (subprograms.length > 0) {
     writeln("");
