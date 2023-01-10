@@ -1,23 +1,6 @@
-/**
-  Copyright (C) 2012-2022 by Autodesk, Inc.
-  All rights reserved.
-
-  NcStudio post processor configuration.
-
-  $Revision: 43897 a364f05aaa6213a5e61e24b3e82c26025a3b51fe $
-  $Date: 2022-07-22 22:30:33 $
-
-  FORKID {722411DE-0481-4DBC-9BF5-BCEAC2358DE0}
-*/
-
-description = "Phantom S Series 4'x8' NcStudio";
-vendor = "Weihong";
-vendorUrl = "https://www.weihong.com.cn/";
-legal = "Copyright (C) 2012-2022 by Autodesk, Inc.";
+description = "Phantom T Series 4'x8'";
+vendor = "Phantom";
 certificationLevel = 2;
-minimumRevision = 45702;
-
-longDescription = "Generic milling post for NcStudio Programming System.";
 
 extension = "nc";
 setCodePage("ascii");

@@ -1,26 +1,9 @@
-/**
-  Copyright (C) 2012-2021 by Autodesk, Inc.
-  All rights reserved.
-
-  Mach3 Plasma post processor configuration.
-
-  $Revision: 43759 a148639d401c1626f2873b948fb6d996d3bc60aa $
-  $Date: 2022-04-12 21:31:49 $
-
-  FORKID {C59C057C-1427-4281-AE93-4F04BBA3F45E}
-*/
-
-description = "Mach3 Plasma";
-vendor = "Artsoft";
-vendorUrl = "http://www.machsupport.com";
-legal = "Copyright (C) 2012-2021 by Autodesk, Inc.";
+description = "Phantom S Series Plasma";
+vendor = "Phantom";
 certificationLevel = 2;
-minimumRevision = 45702;
 highFeedrate = (unit == IN) ? 100 : 2500;
 
-longDescription = "Generic post for Mach3 plasma.";
-
-extension = "tap";
+extension = "gc";
 setCodePage("ascii");
 
 capabilities = CAPABILITY_JET;
@@ -41,7 +24,7 @@ properties = {
     description: "Output the machine settings in the header of the code.",
     group      : "formats",
     type       : "boolean",
-    value      : true,
+    value      : false,
     scope      : "post"
   },
   showSequenceNumbers: {
@@ -103,6 +86,14 @@ properties = {
   useZAxis: {
     title      : "Use Z axis",
     description: "Specifies to enable the output for Z coordinates.",
+    group      : "preferences",
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
+  },
+  resetWorkOffset: {
+    title      : "Set Work Offset on Start",
+    description: "Sets current cutter position to X0.0 and Y0.0 at start of program.",
     group      : "configuration",
     type       : "boolean",
     value      : false,
@@ -220,18 +211,14 @@ function onOpen() {
     }
   }
 
+  if(getProperty("resetWorkOffset")) {
+    writeBlock(gFormat.format(92), xOutput.format(0), yOutput.format(0));
+  }
+
   // absolute coordinates and feed per min
   writeBlock(gAbsIncModal.format(90));
 
-  switch (unit) {
-  case IN:
-    writeBlock(gUnitModal.format(70)); // or use M20
-    break;
-  case MM:
-    writeBlock(gUnitModal.format(71)); // or use M21
-    break;
-  }
-
+  writeBlock(gUnitModal.format(21));
 }
 
 function onComment(message) {
@@ -437,7 +424,7 @@ function writeG31() {
 var powerIsOn = false;
 function onPower(power) {
   initialG31 = false;
-  writeBlock(mFormat.format(power ? 3 : 5));
+  writeBlock(mFormat.format(power ? 7 : 8));
   powerIsOn = power;
   if (power) {
     onDwell(getProperty("pierceDelay"));
@@ -587,7 +574,8 @@ function onSectionEnd() {
 }
 
 function onClose() {
-  writeBlock(mFormat.format(30));
+  writeBlock(gFormat.format(0), xOutput.format(0), yOutput.format(0));
+  writeBlock(mFormat.format(02));
 }
 
 function setProperty(property, value) {
