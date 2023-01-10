@@ -1,7 +1,8 @@
 description = "Merlin Laser Post";
 vendor = "Merlin Aerospace";
+certificationLevel = 2;
 
-longDescription = "Merlin CNC Laser Post Processor";
+longDescription = "Laser Post for Mach3";
 
 extension = "nc";
 setCodePage("ascii");
@@ -27,14 +28,14 @@ properties = {
     value      : true,
     scope      : "post"
   },
-  writeTools: {
-    title      : "Write tool list",
-    description: "Output a tool list in the header of the code.",
-    group      : "formats",
-    type       : "boolean",
-    value      : true,
-    scope      : "post"
-  },
+  // writeTools: {
+  //   title      : "Write tool list",
+  //   description: "Output a tool list in the header of the code.",
+  //   group      : "formats",
+  //   type       : "boolean",
+  //   value      : true,
+  //   scope      : "post"
+  // },
   useZAxis: {
     title      : "Use Z axis",
     description: "Specifies to enable the output for Z coordinates.",
@@ -43,14 +44,35 @@ properties = {
     value      : false,
     scope      : "post"
   },
-  powerChanging: {
-    title      : "Power Changes",
-    description: "Uses spindle speed to altar laser power.",
-    group      : "configuration",
-    type       : "boolean",
-    value      : false,
-    scope      : "post"
-  },
+  // safePositionMethod: {
+  //   title      : "Safe Retracts",
+  //   description: "Select your desired retract option. 'Clearance Height' retracts to the operation clearance height.",
+  //   group      : "homePositions",
+  //   type       : "enum",
+  //   values     : [
+  //     {title:"G28", id:"G28"},
+  //     {title:"G53", id:"G53"},
+  //     {title:"Clearance Height", id:"clearanceHeight"}
+  //   ],
+  //   value: "G28",
+  //   scope: "post"
+  // },
+  // useM06: {
+  //   title      : "Use M6",
+  //   description: "Disable to avoid outputting M6. If disabled Preload is also disabled",
+  //   group      : "preferences",
+  //   type       : "boolean",
+  //   value      : true,
+  //   scope      : "post"
+  // },
+  // preloadTool: {
+  //   title      : "Preload tool",
+  //   description: "Preloads the next tool at a tool change (if any).",
+  //   group      : "preferences",
+  //   type       : "boolean",
+  //   value      : false,
+  //   scope      : "post"
+  // },
   showSequenceNumbers: {
     title      : "Use sequence numbers",
     description: "'Yes' outputs sequence numbers on each block, 'Only on tool change' outputs sequence numbers on tool change blocks only, and 'No' disables the output of sequence numbers.",
@@ -96,6 +118,19 @@ properties = {
     value      : true,
     scope      : "post"
   },
+  // fourthAxis: {
+  //   title      : "Fourth axis mounted along",
+  //   description: "Specifies which axis the fourth axis is mounted on.",
+  //   group      : "configuration",
+  //   type       : "enum",
+  //   values     : [
+  //     {id:"none", title:"None"},
+  //     {id:"x", title:"Along X"},
+  //     {id:"y", title:"Along Y"}
+  //   ],
+  //   value: "none",
+  //   scope: "post"
+  // },
   useRadius: {
     title      : "Radius arcs",
     description: "If yes is selected, arcs are outputted using radius values rather than IJK.",
@@ -126,6 +161,19 @@ properties = {
     value: "none",
     scope: "post"
   }
+  // useRigidTapping: {
+  //   title      : "Use rigid tapping",
+  //   description: "Select 'Yes' to enable, 'No' to disable, or 'Without spindle direction' to enable rigid tapping without outputting the spindle direction block.",
+  //   group      : "preferences",
+  //   type       : "enum",
+  //   values     : [
+  //     {title:"Yes", id:"yes"},
+  //     {title:"No", id:"no"},
+  //     {title:"Without spindle direction", id:"without"}
+  //   ],
+  //   value: "yes",
+  //   scope: "post"
+  // }
 };
 
 // wcs definiton
@@ -180,7 +228,7 @@ var aOutput = createVariable({prefix:"A"}, abcFormat);
 var bOutput = createVariable({prefix:"B"}, abcFormat);
 var cOutput = createVariable({prefix:"C"}, abcFormat);
 var feedOutput = createVariable({prefix:"F"}, feedFormat);
-var sOutput = createVariable({prefix:"G1 A0.0", force:true}, "/n" + rpmFormat);
+var sOutput = createVariable({prefix:"G1 A0.0", force:true}, rpmFormat);
 var dOutput = createVariable({force:true}, dFormat);
 var pOutput = createVariable({}, pFormat);
 
@@ -245,8 +293,14 @@ function formatComment(text) {
   return "(" + filterText(String(text).toUpperCase(), permittedCommentChars) + ")";
 }
 
-function writePowerChange() {
-  
+/**
+  Writes the specified block - used for tool changes only.
+*/
+function writeToolBlock() {
+  var show = getProperty("showSequenceNumbers");
+  setProperty("showSequenceNumbers", (show == "true" || show == "toolChange") ? "true" : "false");
+  writeBlock(arguments);
+  setProperty("showSequenceNumbers", show);
 }
 
 /**
@@ -304,42 +358,6 @@ function onOpen() {
     }
   }
 
-  // dump tool information
-  if (getProperty("writeTools")) {
-    var zRanges = {};
-    if (is3D()) {
-      var numberOfSections = getNumberOfSections();
-      for (var i = 0; i < numberOfSections; ++i) {
-        var section = getSection(i);
-        var zRange = section.getGlobalZRange();
-        var tool = section.getTool();
-        if (zRanges[tool.number]) {
-          zRanges[tool.number].expandToRange(zRange);
-        } else {
-          zRanges[tool.number] = zRange;
-        }
-      }
-    }
-
-    var tools = getToolTable();
-    if (tools.getNumberOfTools() > 0) {
-      for (var i = 0; i < tools.getNumberOfTools(); ++i) {
-        var tool = tools.getTool(i);
-        var comment = "T" + toolFormat.format(tool.number) + "  " +
-          "D=" + xyzFormat.format(tool.diameter) + " " +
-          localize("CR") + "=" + xyzFormat.format(tool.cornerRadius);
-        if ((tool.taperAngle > 0) && (tool.taperAngle < Math.PI)) {
-          comment += " " + localize("TAPER") + "=" + taperFormat.format(tool.taperAngle) + localize("deg");
-        }
-        if (zRanges[tool.number]) {
-          comment += " - " + localize("ZMIN") + "=" + xyzFormat.format(zRanges[tool.number].getMinimum());
-        }
-        comment += " - " + getToolTypeName(tool.type);
-        writeComment(comment);
-      }
-    }
-  }
-
   if ((getNumberOfSections() > 0) && (getSection(0).workOffset == 0)) {
     for (var i = 0; i < getNumberOfSections(); ++i) {
       if (getSection(i).workOffset > 0) {
@@ -376,6 +394,11 @@ function forceXYZ() {
   zOutput.reset();
 }
 
+function forceXY() {
+  xOutput.reset();
+  yOutput.reset();
+}
+
 /** Force output of A, B, and C. */
 function forceABC() {
   aOutput.reset();
@@ -385,7 +408,12 @@ function forceABC() {
 
 /** Force output of X, Y, Z, A, B, C, and F on next output. */
 function forceAny() {
-  forceXYZ();
+  if(getProperty("useZAxis")) {
+    forceXYZ();
+  } else {
+    forceXY();
+  }
+  
   forceABC();
   previousDPMFeed = 0;
   feedOutput.reset();
@@ -407,7 +435,9 @@ function defineWorkPlane(_section, _setWorkPlane) {
       abc = _section.getInitialToolAxisABC();
       if (_setWorkPlane) {
         if (!retracted) {
-          writeRetract(Z);
+          if(getProperty("useZAxis")) {
+            writeRetract(Z);
+          }
         }
         forceWorkPlane();
         onCommand(COMMAND_UNLOCK_MULTI_AXIS);
@@ -451,7 +481,9 @@ function setWorkPlane(abc) {
   onCommand(COMMAND_UNLOCK_MULTI_AXIS);
 
   if (!retracted) {
-    writeRetract(Z);
+    if(getProperty("useZAxis")) {
+      writeRetract(Z);
+    }
   }
 
   writeBlock(
@@ -575,7 +607,7 @@ function subprogramDefine(_initialPosition, _abc, _retracted, _zIsOutput) {
 
     if (usePattern) {
       // make sure Z-position is output prior to subprogram call
-      if (!_retracted && !_zIsOutput) {
+      if (!_retracted && !_zIsOutput && getProperty("useZAxis")) {
         writeBlock(gMotionModal.format(0), zOutput.format(_initialPosition.z));
       }
 
@@ -743,7 +775,10 @@ function setAxisMode(_format, _output, _prefix, _value, _incr) {
 function setIncrementalMode(xyz, abc) {
   xOutput = setAxisMode(xyzFormat, xOutput, "X", xyz.x, true);
   yOutput = setAxisMode(xyzFormat, yOutput, "Y", xyz.y, true);
-  zOutput = setAxisMode(xyzFormat, zOutput, "Z", xyz.z, true);
+
+  if(getProperty("useZAxis")) {
+    zOutput = setAxisMode(xyzFormat, zOutput, "Z", xyz.z, true);
+  }
   aOutput = setAxisMode(abcFormat, aOutput, "A", abc.x, true);
   bOutput = setAxisMode(abcFormat, bOutput, "B", abc.y, true);
   cOutput = setAxisMode(abcFormat, cOutput, "C", abc.z, true);
@@ -756,7 +791,9 @@ function setAbsoluteMode(xyz, abc) {
   if (incrementalMode) {
     xOutput = setAxisMode(xyzFormat, xOutput, "X", xyz.x, false);
     yOutput = setAxisMode(xyzFormat, yOutput, "Y", xyz.y, false);
-    zOutput = setAxisMode(xyzFormat, zOutput, "Z", xyz.z, false);
+    if(getProperty("useZAxis")) {
+      zOutput = setAxisMode(xyzFormat, zOutput, "Z", xyz.z, false);
+    }
     aOutput = setAxisMode(abcFormat, aOutput, "A", abc.x, false);
     bOutput = setAxisMode(abcFormat, bOutput, "B", abc.y, false);
     cOutput = setAxisMode(abcFormat, cOutput, "C", abc.z, false);
@@ -790,7 +827,9 @@ function onSection() {
   if (insertToolCall || newWorkOffset || newWorkPlane) {
 
     // retract to safe plane
-    writeRetract(Z);
+    if(getProperty("useZAxis")) {
+      writeRetract(Z);
+    }
   }
 
   if (hasParameter("operation-comment")) {
@@ -816,43 +855,49 @@ function onSection() {
       onCommand(COMMAND_OPTIONAL_STOP);
     }
 
-    if (tool.number > 256) {
-      warning(localize("Tool number exceeds maximum value."));
-    }
+    // if (tool.number > 256) {
+    //   warning(localize("Tool number exceeds maximum value."));
+    // }
 
-    if (tool.comment) {
-      writeComment(tool.comment);
-    }
-    var showToolZMin = false;
-    if (showToolZMin) {
-      if (is3D()) {
-        var numberOfSections = getNumberOfSections();
-        var zRange = currentSection.getGlobalZRange();
-        var number = tool.number;
-        for (var i = currentSection.getId() + 1; i < numberOfSections; ++i) {
-          var section = getSection(i);
-          if (section.getTool().number != number) {
-            break;
-          }
-          zRange.expandToRange(section.getGlobalZRange());
-        }
-        writeComment(localize("ZMIN") + "=" + zRange.getMinimum());
-      }
-    }
+    // if (getProperty("useM06")) {
+    //   writeToolBlock("T" + toolFormat.format(tool.number), mFormat.format(6));
+    // } else {
+    //   writeBlock(mFormat.format(0), formatComment(localize("CHANGE TOOL")));
+    //   writeToolBlock("T" + toolFormat.format(tool.number));
+    // }
+    // if (tool.comment) {
+    //   writeComment(tool.comment);
+    // }
+    // var showToolZMin = false;
+    // if (showToolZMin) {
+    //   if (is3D()) {
+    //     var numberOfSections = getNumberOfSections();
+    //     var zRange = currentSection.getGlobalZRange();
+    //     var number = tool.number;
+    //     for (var i = currentSection.getId() + 1; i < numberOfSections; ++i) {
+    //       var section = getSection(i);
+    //       if (section.getTool().number != number) {
+    //         break;
+    //       }
+    //       zRange.expandToRange(section.getGlobalZRange());
+    //     }
+    //     writeComment(localize("ZMIN") + "=" + zRange.getMinimum());
+    //   }
+    // }
 
-    if (getProperty("preloadTool") && getProperty("useM06")) {
-      var nextTool = getNextTool(tool.number);
-      if (nextTool) {
-        writeBlock("T" + toolFormat.format(nextTool.number));
-      } else {
-        // preload first tool
-        var section = getSection(0);
-        var firstToolNumber = section.getTool().number;
-        if (tool.number != firstToolNumber) {
-          writeBlock("T" + toolFormat.format(firstToolNumber));
-        }
-      }
-    }
+    // if (getProperty("preloadTool") && getProperty("useM06")) {
+    //   var nextTool = getNextTool(tool.number);
+    //   if (nextTool) {
+    //     writeBlock("T" + toolFormat.format(nextTool.number));
+    //   } else {
+    //     // preload first tool
+    //     var section = getSection(0);
+    //     var firstToolNumber = section.getTool().number;
+    //     if (tool.number != firstToolNumber) {
+    //       writeBlock("T" + toolFormat.format(firstToolNumber));
+    //     }
+    //   }
+    // }
   }
 
   var spindleChanged = tool.type != TOOL_PROBE &&
@@ -861,26 +906,19 @@ function onSection() {
     (tool.clockwise != getPreviousSection().getTool().clockwise));
   if (spindleChanged) {
     forceSpindleSpeed = false;
-    if (spindleSpeed < 0 || spindleSpeed > 255) {
-      error(localize("Laser power out of range."));
+    if (spindleSpeed < 1) {
+      error(localize("Laser power is under minimum value."));
       return;
     }
-
-    var tapping = hasParameter("operation:cycleType") &&
-      ((getParameter("operation:cycleType") == "tapping") ||
-      (getParameter("operation:cycleType") == "right-tapping") ||
-      (getParameter("operation:cycleType") == "left-tapping") ||
-      (getParameter("operation:cycleType") == "tapping-with-chip-breaking"));
-    if (!tapping || (tapping && !(getProperty("useRigidTapping") == "without"))) {
-      writeBlock(
-        sOutput.format(spindleSpeed), mFormat.format(tool.clockwise ? 3 : 4)
-      );
+    if (spindleSpeed > 255) {
+      error(localize("Laser power exceeds maximum value."));
     }
-  }
+    writeBlock(sOutput.format(spindleSpeed), mFormat.format(tool.clockwise ? 3 : 4));
 
-  // wcs
-  if (insertToolCall) { // force work offset when changing tool
-    currentWorkOffset = undefined;
+    // wcs
+    if (insertToolCall) { // force work offset when changing tool
+      currentWorkOffset = undefined;
+    }
   }
 
   if (currentSection.workOffset != currentWorkOffset) {
@@ -888,7 +926,11 @@ function onSection() {
     currentWorkOffset = currentSection.workOffset;
   }
 
-  forceXYZ();
+  if(getProperty("useZAxis")) {
+    forceXYZ();
+  } else {
+    forceXY();
+  }
 
   var abc = defineWorkPlane(currentSection, true);
 
@@ -896,10 +938,11 @@ function onSection() {
   setCoolant(tool.coolant);
 
   forceAny();
+  
   gMotionModal.reset();
 
   var initialPosition = getFramePosition(currentSection.getInitialPosition());
-  if (!retracted && !insertToolCall) {
+  if (!retracted && !insertToolCall && getProperty("useZAxis")) {
     if (getCurrentPosition().z < initialPosition.z) {
       writeBlock(gMotionModal.format(0), zOutput.format(initialPosition.z));
       zIsOutput = true;
@@ -921,14 +964,14 @@ function onSection() {
         gAbsIncModal.format(90),
         gMotionModal.format(0), xOutput.format(initialPosition.x), yOutput.format(initialPosition.y)
       );
-      writeBlock(gMotionModal.format(0), gFormat.format(43), zOutput.format(initialPosition.z), hFormat.format(lengthOffset));
+      writeBlock(gMotionModal.format(0), gFormat.format(43), (getProperty("useZAxis") ? zOutput.format(initialPosition.z) : ""), hFormat.format(lengthOffset));
     } else {
       writeBlock(
         gAbsIncModal.format(90),
         gMotionModal.format(0),
         gFormat.format(43), xOutput.format(initialPosition.x),
         yOutput.format(initialPosition.y),
-        zOutput.format(initialPosition.z), hFormat.format(lengthOffset)
+        (getProperty("useZAxis") ? zOutput.format(initialPosition.z) : ""), hFormat.format(lengthOffset)
       );
     }
     zIsOutput = true;
@@ -966,15 +1009,19 @@ function onCycle() {
 }
 
 function getCommonCycle(x, y, z, r, c) {
-  forceXYZ();
+  if(getProperty("useZAxis")) {
+    forceXYZ();
+  } else {
+    forceXY();
+  }
   if (incrementalMode) {
-    zOutput.format(c);
+    (getProperty("useZAxis") ? zOutput.format(c) : "");
     return [xOutput.format(x), yOutput.format(y),
-      "Z" + xyzFormat.format(z - r),
+      (getProperty("useZAxis") ? "Z" + xyzFormat.format(z - r) : ""),
       "R" + xyzFormat.format(r - c)];
   } else {
     return [xOutput.format(x), yOutput.format(y),
-      zOutput.format(z),
+      (getProperty("useZAxis") ? zOutput.format(z) : ""),
       "R" + xyzFormat.format(r)];
   }
 }
@@ -982,7 +1029,7 @@ function getCommonCycle(x, y, z, r, c) {
 function setCyclePosition(_position) {
   switch (gPlaneModal.getCurrent()) {
   case 17: // XY
-    zOutput.format(_position);
+    (getProperty("useZAxis") ? zOutput.format(_position) : "");
     break;
   case 18: // ZX
     yOutput.format(_position);
@@ -1233,7 +1280,7 @@ function onRadiusCompensation() {
 function onRapid(_x, _y, _z) {
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);
-  var z = zOutput.format(_z);
+  var z = (getProperty("useZAxis") ? zOutput.format(_z) : "")
   if (x || y || z) {
     if (pendingRadiusCompensation >= 0) {
       error(localize("Radius compensation mode cannot be changed at rapid traversal."));
@@ -1247,7 +1294,7 @@ function onRapid(_x, _y, _z) {
 function onLinear(_x, _y, _z, feed) {
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);
-  var z = zOutput.format(_z);
+  var z = (getProperty("useZAxis") ? zOutput.format(_z) : "")
   var f = feedOutput.format(feed);
   if (x || y || z) {
     if (pendingRadiusCompensation >= 0) {
@@ -1292,7 +1339,7 @@ function onRapid5D(_x, _y, _z, _a, _b, _c) {
   }
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);
-  var z = zOutput.format(_z);
+  var z = (getProperty("useZAxis") ? zOutput.format(_z) : "")
   var a = aOutput.format(_a);
   var b = bOutput.format(_b);
   var c = cOutput.format(_c);
@@ -1311,7 +1358,7 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
   }
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);
-  var z = zOutput.format(_z);
+  var z = (getProperty("useZAxis") ? zOutput.format(_z) : "")
   var a = aOutput.format(_a);
   var b = bOutput.format(_b);
   var c = cOutput.format(_c);
@@ -1625,7 +1672,7 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
   } else if (!getProperty("useRadius")) {
     switch (getCircularPlane()) {
     case PLANE_XY:
-      writeBlock(gFeedModeModal.format(94), gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
+      writeBlock(gFeedModeModal.format(94), gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), (getProperty("useZAxis") ? zOutput.format(z) : ""), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
       break;
     case PLANE_ZX:
       writeBlock(gFeedModeModal.format(94), gPlaneModal.format(18), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), iOutput.format(cx - start.x, 0), kOutput.format(cz - start.z, 0), feedOutput.format(feed));
@@ -1643,7 +1690,7 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
     }
     switch (getCircularPlane()) {
     case PLANE_XY:
-      writeBlock(gFeedModeModal.format(94), gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), "R" + rFormat.format(r), feedOutput.format(feed));
+      writeBlock(gFeedModeModal.format(94), gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), (getProperty("useZAxis") ? zOutput.format(z) : ""), "R" + rFormat.format(r), feedOutput.format(feed));
       break;
     case PLANE_ZX:
       writeBlock(gFeedModeModal.format(94), gPlaneModal.format(18), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), "R" + rFormat.format(r), feedOutput.format(feed));
@@ -1743,7 +1790,7 @@ function getCoolantCodes(coolant) {
     return multipleCoolantBlocks; // return the single formatted coolant value
   }
   return undefined;
-} 
+}
 
 var mapCommand = {
   COMMAND_END                     : 2,
@@ -1839,10 +1886,10 @@ function writeRetract() {
   for (i in arguments) {
     retractAxes[arguments[i]] = true;
   }
-  if ((retractAxes[0] || retractAxes[1]) && !retracted) { // retract Z first before moving to X/Y home
-    error(localize("Retracting in X/Y is not possible without being retracted in Z."));
-    return;
-  }
+  // if ((retractAxes[0] || retractAxes[1]) && (!retracted || ) { // retract Z first before moving to X/Y home
+  //   error(localize("Retracting in X/Y is not possible without being retracted in Z."));
+  //   return;
+  // }
   // special conditions
   /*
   if (retractAxes[2]) { // Z doesn't use G53
@@ -1874,15 +1921,34 @@ function writeRetract() {
       yOutput.reset();
       break;
     case Z:
-      words.push("Z" + xyzFormat.format(_zHome));
-      zOutput.reset();
-      retracted = true;
+      if(getProperty("useZAxis")) {
+        words.push("Z" + xyzFormat.format(_zHome));
+        zOutput.reset();
+        retracted = true;
+      }
       break;
     default:
       error(localize("Unsupported axis specified for writeRetract()."));
       return;
     }
   }
+  // if (words.length > 0) {
+  //   switch (method) {
+  //   case "G28":
+  //     gMotionModal.reset();
+  //     gAbsIncModal.reset();
+  //     writeBlock(gFormat.format(28), gAbsIncModal.format(91), words);
+  //     writeBlock(gAbsIncModal.format(90));
+  //     break;
+  //   case "G53":
+  //     gMotionModal.reset();
+  //     writeBlock(gAbsIncModal.format(90), gFormat.format(53), gMotionModal.format(0), words);
+  //     break;
+  //   default:
+  //     error(localize("Unsupported safe position method."));
+  //     return;
+  //   }
+  // }
 }
 
 function onClose() {
@@ -1890,7 +1956,9 @@ function onClose() {
 
   setCoolant(COOLANT_OFF);
 
-  writeRetract(Z);
+  if(getProperty("useZAxis")) {
+    writeRetract(Z);
+  }
 
   setWorkPlane(new Vector(0, 0, 0)); // reset working plane
 
