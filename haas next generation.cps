@@ -196,9 +196,10 @@ properties = {
     values     : [
       {title:"G28", id:"G28"},
       {title:"G53", id:"G53"},
-      {title:"Clearance Height", id:"clearanceHeight"}
+      {title:"Clearance Height", id:"clearanceHeight"},
+      {title:"JRetract", id:"jRetract"}
     ],
-    value: "G28",
+    value: "jRetract",
     scope: "post"
   },
   useSmoothing: {
@@ -4055,6 +4056,8 @@ function writeRetract() {
     _xHome = toPreciseUnit(0, MM);
     _yHome = toPreciseUnit(0, MM);
     _zHome = toPreciseUnit(0, MM);
+  } else if (method == "jRetract") {
+    _zHome = toPreciseUnit(0, MM);
   } else {
     if (homePositionCenter &&
       hasParameter("part-upper-x") && hasParameter("part-lower-x")) {
@@ -4102,6 +4105,12 @@ function writeRetract() {
     case "G53":
       gMotionModal.reset();
       writeBlock(gAbsIncModal.format(90), gFormat.format(53), gMotionModal.format(0), words);
+      break;
+    case "jRetract":
+      gMotionModal.reset();
+      gAbsIncModal.reset();
+      writeBlock(gFormat.format(53), gMotionModal.format(0), words);
+      writeBlock(gAbsIncModal.format(90));
       break;
     default:
       error(localize("Unsupported safe position method."));

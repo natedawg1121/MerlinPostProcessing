@@ -102,6 +102,14 @@ properties = {
     value      : 5,
     scope      : "post"
   },
+  debugComments: {
+    title      : "Debug Comments",
+    description: "Adds comments before every move.",
+    group      : "preferences",
+    type       : "boolean",
+    value      : false,
+    scope      : "post"
+  },
   optionalStop: {
     title      : "Optional stop",
     description: "Outputs optional stop code during when necessary in the code.",
@@ -273,6 +281,7 @@ var lastOperationComment = "";
 var incrementalSubprogram;
 var retracted = false; // specifies that the tool has been retracted to the safe plane
 var spindleOn = false;
+var debugComments;
 
 /**
   Writes the specified block.
@@ -312,10 +321,16 @@ function writeComment(text) {
 }
 
 function onOpen() {
+  debugComments = getProperty("debugComments");
+  writeComment("DEBUG COMMENTS: " + debugComments);
+
   if (getProperty("useRadius")) {
     maximumCircularSweep = toRad(90); // avoid potential center calculation errors for CNC
   }
 
+  if (!getProperty("useZAxis")) {
+    zOutput.disable();
+  }
   if (!machineConfiguration.isMachineCoordinate(0)) {
     aOutput.disable();
   }
@@ -345,7 +360,7 @@ function onOpen() {
   writeBlock(gFormat.format(90));
   writeBlock(gFormat.format(20));
   writeBlock(sOutput.format(255));
-  writeBlock(sOutput.format(000) + "\n");
+  writeBlock(sOutput.format(0) + "\n");
 
   lastSubprogram = 0;
 
@@ -376,7 +391,7 @@ function onOpen() {
     }
   }
 
-  writeBlock(gFeedModeModal.format(00), gFormat.format(17), gFormat.format(40), gFormat.format(49), gPlaneModal.format(80));
+  writeBlock(gFeedModeModal.format(0), gFormat.format(17), gFormat.format(40), gFormat.format(49), gPlaneModal.format(80));
 
   // switch (unit) {
   // case IN:
@@ -402,11 +417,6 @@ function forceXYZ() {
   zOutput.reset();
 }
 
-function forceXY() {
-  xOutput.reset();
-  yOutput.reset();
-}
-
 /** Force output of A, B, and C. */
 function forceABC() {
   aOutput.reset();
@@ -416,12 +426,7 @@ function forceABC() {
 
 /** Force output of X, Y, Z, A, B, C, and F on next output. */
 function forceAny() {
-  if(getProperty("useZAxis")) {
-    forceXYZ();
-  } else {
-    forceXY();
-  }
-  
+  forceXYZ();
   forceABC();
   previousDPMFeed = 0;
   feedOutput.reset();
@@ -443,9 +448,7 @@ function defineWorkPlane(_section, _setWorkPlane) {
       abc = _section.getInitialToolAxisABC();
       if (_setWorkPlane) {
         if (!retracted) {
-          if(getProperty("useZAxis")) {
             writeRetract(Z);
-          }
         }
         forceWorkPlane();
         onCommand(COMMAND_UNLOCK_MULTI_AXIS);
@@ -489,9 +492,7 @@ function setWorkPlane(abc) {
   onCommand(COMMAND_UNLOCK_MULTI_AXIS);
 
   if (!retracted) {
-    if(getProperty("useZAxis")) {
-      writeRetract(Z);
-    }
+    writeRetract(Z);
   }
 
   writeBlock(
@@ -615,7 +616,7 @@ function subprogramDefine(_initialPosition, _abc, _retracted, _zIsOutput) {
 
     if (usePattern) {
       // make sure Z-position is output prior to subprogram call
-      if (!_retracted && !_zIsOutput && getProperty("useZAxis")) {
+      if (!_retracted && !_zIsOutput) {
         writeBlock(gMotionModal.format(0), zOutput.format(_initialPosition.z));
       }
 
@@ -784,9 +785,8 @@ function setIncrementalMode(xyz, abc) {
   xOutput = setAxisMode(xyzFormat, xOutput, "X", xyz.x, true);
   yOutput = setAxisMode(xyzFormat, yOutput, "Y", xyz.y, true);
 
-  if(getProperty("useZAxis")) {
-    zOutput = setAxisMode(xyzFormat, zOutput, "Z", xyz.z, true);
-  }
+  zOutput = setAxisMode(xyzFormat, zOutput, "Z", xyz.z, true);
+
   aOutput = setAxisMode(abcFormat, aOutput, "A", abc.x, true);
   bOutput = setAxisMode(abcFormat, bOutput, "B", abc.y, true);
   cOutput = setAxisMode(abcFormat, cOutput, "C", abc.z, true);
@@ -799,9 +799,9 @@ function setAbsoluteMode(xyz, abc) {
   if (incrementalMode) {
     xOutput = setAxisMode(xyzFormat, xOutput, "X", xyz.x, false);
     yOutput = setAxisMode(xyzFormat, yOutput, "Y", xyz.y, false);
-    if(getProperty("useZAxis")) {
-      zOutput = setAxisMode(xyzFormat, zOutput, "Z", xyz.z, false);
-    }
+    
+    zOutput = setAxisMode(xyzFormat, zOutput, "Z", xyz.z, false);
+
     aOutput = setAxisMode(abcFormat, aOutput, "A", abc.x, false);
     bOutput = setAxisMode(abcFormat, bOutput, "B", abc.y, false);
     cOutput = setAxisMode(abcFormat, cOutput, "C", abc.z, false);
@@ -833,11 +833,8 @@ function onSection() {
     (!getPreviousSection().isMultiAxis() && currentSection.isMultiAxis() ||
       getPreviousSection().isMultiAxis() && !currentSection.isMultiAxis()); // force newWorkPlane between indexing and simultaneous operations
   if (insertToolCall || newWorkOffset || newWorkPlane) {
-
     // retract to safe plane
-    if(getProperty("useZAxis")) {
-      writeRetract(Z);
-    }
+    writeRetract(Z);
   }
 
   if (hasParameter("operation-comment")) {
@@ -938,11 +935,7 @@ function onSection() {
     currentWorkOffset = currentSection.workOffset;
   }
 
-  if(getProperty("useZAxis")) {
-    forceXYZ();
-  } else {
-    forceXY();
-  }
+  forceXYZ();
 
   var abc = defineWorkPlane(currentSection, true);
 
@@ -954,7 +947,7 @@ function onSection() {
   gMotionModal.reset();
 
   var initialPosition = getFramePosition(currentSection.getInitialPosition());
-  if (!retracted && !insertToolCall && getProperty("useZAxis")) {
+  if (!retracted && !insertToolCall) {
     if (getCurrentPosition().z < initialPosition.z) {
       writeBlock(gMotionModal.format(0), zOutput.format(initialPosition.z));
       zIsOutput = true;
@@ -972,28 +965,40 @@ function onSection() {
     writeBlock(gPlaneModal.format(17));
 
     if (!machineConfiguration.isHeadConfiguration()) {
+      writeBlock(mFormat.format(5));
+      spindleOn = false;
       writeBlock(
         gAbsIncModal.format(90),
         gMotionModal.format(0), xOutput.format(initialPosition.x), yOutput.format(initialPosition.y)
       );
-      writeBlock(gMotionModal.format(0), gFormat.format(43), (getProperty("useZAxis") ? zOutput.format(initialPosition.z) : ""), hFormat.format(lengthOffset));
+      writeBlock(mFormat.format(3));
+      spindleOn = true;
+      writeBlock(gMotionModal.format(0), gFormat.format(43), zOutput.format(initialPosition.z), hFormat.format(lengthOffset));
     } else {
+      writeBlock(mFormat.format(5));
+      spindleOn = false;
       writeBlock(
         gAbsIncModal.format(90),
         gMotionModal.format(0),
         gFormat.format(43), xOutput.format(initialPosition.x),
         yOutput.format(initialPosition.y),
-        (getProperty("useZAxis") ? zOutput.format(initialPosition.z) : ""), hFormat.format(lengthOffset)
+        zOutput.format(initialPosition.z), hFormat.format(lengthOffset)
       );
+      writeBlock(mFormat.format(3));
+      spindleOn = true;
     }
     zIsOutput = true;
   } else {
+    writeBlock(mFormat.format(5));
+    spindleOn = false;
     writeBlock(
       gAbsIncModal.format(90),
       gMotionModal.format(0),
       xOutput.format(initialPosition.x),
       yOutput.format(initialPosition.y)
     );
+    writeBlock(mFormat.format(3));
+    spindleOn = true;
   }
 
   // define subprogram
@@ -1021,27 +1026,19 @@ function onCycle() {
 }
 
 function getCommonCycle(x, y, z, r, c) {
-  if(getProperty("useZAxis")) {
-    forceXYZ();
-  } else {
-    forceXY();
-  }
+  forceXYZ();
   if (incrementalMode) {
-    (getProperty("useZAxis") ? zOutput.format(c) : "");
-    return [xOutput.format(x), yOutput.format(y),
-      (getProperty("useZAxis") ? "Z" + xyzFormat.format(z - r) : ""),
-      "R" + xyzFormat.format(r - c)];
+    zOutput.format(c);
+    return [xOutput.format(x), yOutput.format(y), xyzFormat.format(z - r), "R" + xyzFormat.format(r - c)];
   } else {
-    return [xOutput.format(x), yOutput.format(y),
-      (getProperty("useZAxis") ? zOutput.format(z) : ""),
-      "R" + xyzFormat.format(r)];
+    return [xOutput.format(x), yOutput.format(y), zOutput.format(z), "R" + xyzFormat.format(r)];
   }
 }
 
 function setCyclePosition(_position) {
   switch (gPlaneModal.getCurrent()) {
   case 17: // XY
-    (getProperty("useZAxis") ? zOutput.format(_position) : "");
+    zOutput.format(_position);
     break;
   case 18: // ZX
     yOutput.format(_position);
@@ -1067,6 +1064,9 @@ function onCyclePoint(x, y, z) {
 
     switch (cycleType) {
     case "drilling":
+      if(debugComments) {
+        writeComment("DRILLING");
+      }
       writeBlock(
         gRetractModal.format(98), gCycleModal.format(81),
         getCommonCycle(x, y, z, cycle.retract, cycle.clearance),
@@ -1074,6 +1074,9 @@ function onCyclePoint(x, y, z) {
       );
       break;
     case "counter-boring":
+      if(debugComments) {
+        writeComment("COUNTER BORING");
+      }
       if (P > 0) {
         writeBlock(
           gRetractModal.format(98), gCycleModal.format(82),
@@ -1090,6 +1093,9 @@ function onCyclePoint(x, y, z) {
       }
       break;
     case "chip-breaking":
+      if(debugComments) {
+        writeComment("CHIP BREAKING");
+      }
       if ((cycle.accumulatedDepth < cycle.depth) || (P > 0)) {
         expandCyclePoint(x, y, z);
       } else {
@@ -1102,6 +1108,9 @@ function onCyclePoint(x, y, z) {
       }
       break;
     case "deep-drilling":
+      if(debugComments) {
+        writeComment("DEEP DRILLING");
+      }
       if (P > 0) {
         expandCyclePoint(x, y, z);
       } else {
@@ -1115,6 +1124,9 @@ function onCyclePoint(x, y, z) {
       }
       break;
     case "tapping":
+      if(debugComments) {
+        writeComment("TAPPING");
+      }
       if (tool.type == TOOL_TAP_LEFT_HAND) {
         expandCyclePoint(x, y, z);
       } else {
@@ -1130,9 +1142,15 @@ function onCyclePoint(x, y, z) {
       }
       break;
     case "left-tapping":
+      if(debugComments) {
+        writeComment("LEFT TAPPING");
+      }
       expandCyclePoint(x, y, z);
       break;
     case "right-tapping":
+      if(debugComments) {
+        writeComment("RIGHT TAPPING");
+      }
       F = tool.getThreadPitch() * rpmFormat.getResultingValue(spindleSpeed);
       if (getProperty("useRigidTapping") != "no") {
         writeBlock(mFormat.format(29), sOutput.format(spindleSpeed));
@@ -1144,6 +1162,9 @@ function onCyclePoint(x, y, z) {
       );
       break;
     case "fine-boring":
+      if(debugComments) {
+        writeComment("FINE BORING");
+      }
       writeBlock(
         gRetractModal.format(98), gCycleModal.format(76),
         getCommonCycle(x, y, z, cycle.retract, cycle.clearance),
@@ -1155,6 +1176,9 @@ function onCyclePoint(x, y, z) {
       );
       break;
     case "back-boring":
+      if(debugComments) {
+        writeComment("BACK BORING");
+      }
       var dx = (gPlaneModal.getCurrent() == 19) ? cycle.backBoreDistance : 0;
       var dy = (gPlaneModal.getCurrent() == 18) ? cycle.backBoreDistance : 0;
       var dz = (gPlaneModal.getCurrent() == 17) ? cycle.backBoreDistance : 0;
@@ -1168,6 +1192,9 @@ function onCyclePoint(x, y, z) {
       );
       break;
     case "reaming":
+      if(debugComments) {
+        writeComment("REAMING");
+      }
       if (feedFormat.getResultingValue(cycle.feedrate) != feedFormat.getResultingValue(cycle.retractFeedrate)) {
         expandCyclePoint(x, y, z);
         break;
@@ -1188,6 +1215,9 @@ function onCyclePoint(x, y, z) {
       }
       break;
     case "stop-boring":
+      if(debugComments) {
+        writeComment("STOP BORING");
+      }
       writeBlock(
         gRetractModal.format(98), gCycleModal.format(86),
         getCommonCycle(x, y, z, cycle.retract, cycle.clearance),
@@ -1196,6 +1226,9 @@ function onCyclePoint(x, y, z) {
       );
       break;
     case "manual-boring":
+      if(debugComments) {
+        writeComment("MANUAL BORING");
+      }
       writeBlock(
         gRetractModal.format(98), gCycleModal.format(88),
         getCommonCycle(x, y, z, cycle.retract, cycle.clearance),
@@ -1204,6 +1237,9 @@ function onCyclePoint(x, y, z) {
       );
       break;
     case "boring":
+      if(debugComments) {
+        writeComment("BORING");
+      }
       if (feedFormat.getResultingValue(cycle.feedrate) != feedFormat.getResultingValue(cycle.retractFeedrate)) {
         expandCyclePoint(x, y, z);
         break;
@@ -1292,23 +1328,33 @@ function onRadiusCompensation() {
 function onRapid(_x, _y, _z) {
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);
-  var z = (getProperty("useZAxis") ? zOutput.format(_z) : "")
+  var z = zOutput.format(_z);
   if (x || y || z) {
     if (pendingRadiusCompensation >= 0) {
       error(localize("Radius compensation mode cannot be changed at rapid traversal."));
       return;
     }
+    if(debugComments) {
+      writeComment("RAPID TO " + (x ? x : "") + (x && y ? ", " : "") + (y ? y : "") + (y && z ? ", " : "") + (z ? z : ""));
+    }
+    writeBlock(mFormat.format(5));
+    spindleOn = false;
     writeBlock(gMotionModal.format(0), x, y, z);
     feedOutput.reset();
+    writeBlock(mFormat.format(3));
+    spindleOn = true;
   }
 }
 
 function onLinear(_x, _y, _z, feed) {
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);
-  var z = (getProperty("useZAxis") ? zOutput.format(_z) : "")
+  var z = zOutput.format(_z);
   var f = feedOutput.format(feed);
   if (x || y || z) {
+    if(debugComments) {
+      writeComment("LINEAR TO " + (x ? x : "") + (x && y ? ", " : "") + (y ? y : "") + (y && z ? ", " : "") + (z ? z : ""));
+    }
     if (pendingRadiusCompensation >= 0) {
       pendingRadiusCompensation = -1;
       var d = tool.diameterOffset;
@@ -1351,7 +1397,7 @@ function onRapid5D(_x, _y, _z, _a, _b, _c) {
   }
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);
-  var z = (getProperty("useZAxis") ? zOutput.format(_z) : "")
+  var z = zOutput.format(_z);
   var a = aOutput.format(_a);
   var b = bOutput.format(_b);
   var c = cOutput.format(_c);
@@ -1370,7 +1416,8 @@ function onLinear5D(_x, _y, _z, _a, _b, _c, feed) {
   }
   var x = xOutput.format(_x);
   var y = yOutput.format(_y);
-  var z = (getProperty("useZAxis") ? zOutput.format(_z) : "")
+  var z = zOutput.format(_z);
+
   var a = aOutput.format(_a);
   var b = bOutput.format(_b);
   var c = cOutput.format(_c);
@@ -1663,6 +1710,10 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
 
   var start = getCurrentPosition();
 
+  if(debugComments) {
+    writeComment("CIRCULAR TO " + xOutput.format(x) + ", " + yOutput.format(y) + (getProperty("useZAxis") ? ", " + zOutput.format(z) : "") + ", " + iOutput.format(cx-start.x, 0) + ", " + jOutput.format(cy - start.y, 0));
+  }
+
   if (isFullCircle()) {
     if (getProperty("useRadius") || isHelical()) { // radius mode does not support full arcs
       linearize(tolerance);
@@ -1684,7 +1735,7 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
   } else if (!getProperty("useRadius")) {
     switch (getCircularPlane()) {
     case PLANE_XY:
-      writeBlock(gFeedModeModal.format(94), gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), (getProperty("useZAxis") ? zOutput.format(z) : ""), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
+      writeBlock(gFeedModeModal.format(94), gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), iOutput.format(cx - start.x, 0), jOutput.format(cy - start.y, 0), feedOutput.format(feed));
       break;
     case PLANE_ZX:
       writeBlock(gFeedModeModal.format(94), gPlaneModal.format(18), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), iOutput.format(cx - start.x, 0), kOutput.format(cz - start.z, 0), feedOutput.format(feed));
@@ -1702,7 +1753,7 @@ function onCircular(clockwise, cx, cy, cz, x, y, z, feed) {
     }
     switch (getCircularPlane()) {
     case PLANE_XY:
-      writeBlock(gFeedModeModal.format(94), gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), (getProperty("useZAxis") ? zOutput.format(z) : ""), "R" + rFormat.format(r), feedOutput.format(feed));
+      writeBlock(gFeedModeModal.format(94), gPlaneModal.format(17), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), "R" + rFormat.format(r), feedOutput.format(feed));
       break;
     case PLANE_ZX:
       writeBlock(gFeedModeModal.format(94), gPlaneModal.format(18), gMotionModal.format(clockwise ? 2 : 3), xOutput.format(x), yOutput.format(y), zOutput.format(z), "R" + rFormat.format(r), feedOutput.format(feed));
@@ -1879,7 +1930,7 @@ function onSectionEnd() {
       }
     }
   }
-  writeBlock(sOutput.format(000));
+  writeBlock(sOutput.format(0));
   forceAny();
 }
 
@@ -1937,14 +1988,23 @@ function writeRetract() {
       if(getProperty("useZAxis")) {
         words.push("Z" + xyzFormat.format(_zHome));
         zOutput.reset();
-        retracted = true;
+      } else {
+        mFormat.format(8);
       }
+      retracted = true;
       break;
     default:
       error(localize("Unsupported axis specified for writeRetract()."));
       return;
     }
   }
+
+  if (_xHome || _yHome || _zHome) {
+    if (debugComments) {
+      writeComment("RETRACTING TO " + (_xHome ? "X" + _xHome : "") + (_xHome && y ? ", " : "") + (_yHome ? "Y" + _yHome : "") + (_yHome && _zHome ? ", " : "") + (_zHome ? "Z" + _zHome : ""));
+    }
+  }
+
   // if (words.length > 0) {
   //   switch (method) {
   //   case "G28":
@@ -1969,9 +2029,7 @@ function onClose() {
 
   setCoolant(COOLANT_OFF);
 
-  if(getProperty("useZAxis")) {
-    writeRetract(Z);
-  }
+  writeRetract(Z);
 
   setWorkPlane(new Vector(0, 0, 0)); // reset working plane
 
@@ -1979,7 +2037,7 @@ function onClose() {
 
   onImpliedCommand(COMMAND_END);
   onImpliedCommand(COMMAND_STOP_SPINDLE);
-  writeBlock(mFormat.format(05));
+  writeBlock(mFormat.format(5));
   spindleOn = false;
   writeBlock(gFormat.format(90));
   writeBlock(mFormat.format(30)); // stop program, spindle stop, coolant off
