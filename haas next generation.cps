@@ -4057,6 +4057,8 @@ function writeRetract() {
     _yHome = toPreciseUnit(0, MM);
     _zHome = toPreciseUnit(0, MM);
   } else if (method == "jRetract") {
+    _xHome = toPreciseUnit(X.getCurrentPosition, MM);
+    _yHome = toPreciseUnit(Y.getCurrentPosition, MM);
     _zHome = toPreciseUnit(0, MM);
   } else {
     if (homePositionCenter &&
@@ -4109,7 +4111,7 @@ function writeRetract() {
     case "jRetract":
       gMotionModal.reset();
       gAbsIncModal.reset();
-      writeBlock(gFormat.format(53), gMotionModal.format(0), words);
+      writeBlock(gFormat.format(28), gMotionModal.format(91), words);
       writeBlock(gAbsIncModal.format(90));
       break;
     default:
@@ -4251,9 +4253,9 @@ function onClose() {
 
   // retract
   writeRetract(Z);
-  if (!getProperty("homePositionCenter") || (machineConfiguration.isMultiAxisConfiguration() && getCurrentDirection().length != 0)) {
-    writeRetract(X, Y);
-  }
+  // if (!getProperty("homePositionCenter") || (machineConfiguration.isMultiAxisConfiguration() && getCurrentDirection().length != 0 && !getProperty("jRetract"))) {
+  //   writeRetract(X, Y);
+  // }
 
   if (activeG254) {
     writeBlock(gFormat.format(255)); // cancel DWO
@@ -4264,16 +4266,16 @@ function onClose() {
     unwindABC(new Vector(0, 0, 0));
     positionABC(new Vector(0, 0, 0), true);
   }
-  if (getProperty("homePositionCenter")) {
-    homePositionCenter = getProperty("homePositionCenter");
-    if (getProperty("safePositionMethod") == "clearanceHeight") {
-      retracted = true;
-      setProperty("safePositionMethod", "G53");
-      writeRetract(X);
-    } else {
-      writeRetract(X, Y);
-    }
-  }
+  // if (getProperty("homePositionCenter")) {
+  //   homePositionCenter = getProperty("homePositionCenter");
+  //   if (getProperty("safePositionMethod") == "clearanceHeight") {
+  //     retracted = true;
+  //     setProperty("safePositionMethod", "G53");
+  //     writeRetract(X);
+  //   } else {
+  //     writeRetract(X, Y);
+  //   }
+  // }
 
   if (getProperty("useLiveConnection")) {
     writeComment("Live Connection Footer"); // Live connection write footer

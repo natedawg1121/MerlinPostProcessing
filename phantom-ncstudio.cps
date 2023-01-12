@@ -1,4 +1,4 @@
-description = "Phantom T Series 4'x8'";
+description = "Phantom T Series 4'x 8'";
 vendor = "Phantom";
 certificationLevel = 2;
 
