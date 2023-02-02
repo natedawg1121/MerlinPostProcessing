@@ -214,8 +214,16 @@ properties = {
       {title:"Medium", id:"2"},
       {title:"Finish", id:"3"}
     ],
-    value: "-1",
+    value: "2",
     scope: "post"
+  },
+  useLookahead: {
+    title      : "Use Lookahead",
+    description: "Enable to utilize looking forward during multi-axis milling operations. This is useful for large sloping surfaces.",
+    group      : "preferences",
+    type       : "boolean",
+    value      : true,
+    scope      : "post"
   },
   homePositionCenter: {
     title      : "Home position center",
@@ -1444,6 +1452,27 @@ function setSmoothing(mode) {
 }
 // End of smoothing logic
 
+function setSmoothing(mode) {
+  if (mode == smoothing.isActive && (!mode || !smoothing.isDifferent) && !smoothing.force) {
+    return; // return if smoothing is already active or is not different
+  }
+  if (typeof lengthCompensationActive != "undefined" && smoothingSettings.cancelCompensation) {
+    validate(!lengthCompensationActive, "Length compensation is active while trying to update smoothing.");
+  }
+  if (mode) { // enable smoothing
+    writeBlock(
+      gFormat.format(187),
+      "P" + smoothing.level,
+      conditional((smoothingSettings.differenceCriteria != "level"), "E" + xyzFormat.format(smoothing.tolerance))
+    );
+  } else { // disable smoothing
+    writeBlock(gFormat.format(187));
+  }
+  smoothing.isActive = mode;
+  smoothing.force = false;
+  smoothing.isDifferent = false;
+}
+
 function FeedContext(id, description, feed) {
   this.id = id;
   this.description = description;
@@ -2404,6 +2433,10 @@ function onSection() {
   smoothing.force = operationNeedsSafeStart && (getProperty("useSmoothing") != "-1");
   setSmoothing(smoothing.isAllowed);
 
+  if(getProperty("useLookahead")) {
+    writeBlock(gFormat.format(103), "P0", formatComment("LOOKAHEAD ON"));
+  }
+
   var G = ((highFeedMapping != HIGH_FEED_NO_MAPPING) || !getProperty("useG0")) ? 1 : 0;
   var F = ((highFeedMapping != HIGH_FEED_NO_MAPPING) || !getProperty("useG0")) ? getFeed(highFeedrate) : "";
   if (insertToolCall || retracted || operationNeedsSafeStart || !lengthCompensationActive ||
@@ -2509,6 +2542,7 @@ function onSection() {
     validate(probeVariables.probeAngleMethod != "G68", "You cannot probe while G68 Rotation is in effect.");
     validate(probeVariables.probeAngleMethod != "G54.4", "You cannot probe while workpiece setting error compensation G54.4 is enabled.");
     writeBlock(gFormat.format(65), "P" + 9832); // spin the probe on
+    writeBlock(gFormat.format(103), "P1", formatComment("LOOKAHEAD OFF"));
     inspectionCreateResultsFileHeader();
   } else {
     // surface Inspection
