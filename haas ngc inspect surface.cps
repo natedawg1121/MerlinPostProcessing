@@ -214,8 +214,8 @@ properties = {
       {title:"Medium", id:"2"},
       {title:"Finish", id:"3"}
     ],
-    value: "2",
-    scope: "post"
+    value: "9999",
+    scope: "operation"
   },
   useLookahead: {
     title      : "Use Lookahead",
